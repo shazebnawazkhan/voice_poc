@@ -5,11 +5,11 @@
 - Python setup
 
 ```bash
-> python -m venv .venv
+python -m venv .venv
 ```
 
 ```bash
-> .\.venv\Scripts\activate
+.\.venv\Scripts\activate
 ```
 
 
