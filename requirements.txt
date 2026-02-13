@@ -1,0 +1,13 @@
+python-dotenv
+livekit
+livekit-agents
+livekit-plugins-openai
+livekit-plugins-elevenlabs
+livekit-plugins-silero
+livekit-plugins-deepgram
+livekit-plugins-google
+docling
+faiss-cpu
+langchain-text-splitters
+langchain-ollama
+langchain-community
