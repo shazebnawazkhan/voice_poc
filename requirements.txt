@@ -6,8 +6,10 @@ livekit-plugins-elevenlabs
 livekit-plugins-silero
 livekit-plugins-deepgram
 livekit-plugins-google
+langchain-google-genai
 docling
 faiss-cpu
 langchain-text-splitters
 langchain-ollama
 langchain-community
+llama_index

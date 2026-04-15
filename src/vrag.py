@@ -1,14 +1,21 @@
 
+from csv import reader
 from docling.document_converter import DocumentConverter
 from langchain_text_splitters import MarkdownHeaderTextSplitter
+from langchain_text_splitters import RecursiveCharacterTextSplitter
 from langchain_ollama import ChatOllama, OllamaEmbeddings
 from langchain_core.prompts import ChatPromptTemplate
 from langchain_core.runnables import RunnablePassthrough
 from langchain_core.output_parsers import StrOutputParser
+from langchain_google_genai import ChatGoogleGenerativeAI
+from langchain_core.documents import Document
 
 import faiss
 from langchain_community.docstore.in_memory import InMemoryDocstore
 from langchain_community.vectorstores import FAISS
+from llama_index.readers.file import PDFReader
+import traceback
+
 
 
 
@@ -30,11 +37,28 @@ class VRAG():
     def get_markdown_splits(self, markdown_content, metadata=None):
         headers_to_split_on = [("#", "Header 1"), ("##", "Header 2"), ("###", "Header 3")]
         markdown_splitter = MarkdownHeaderTextSplitter(headers_to_split_on, strip_headers=False)
+        # markdown_splitter = RecursiveCharacterTextSplitter(chunk_size=100, chunk_overlap=20)
         chunks = markdown_splitter.split_text(markdown_content)
         if metadata:
             for chunk in chunks:
                 chunk.metadata.update(metadata)
         return chunks
+    
+    def get_chunks_from_pdf(self, file_path, metadata=None):
+        reader = PDFReader()
+        print(f"Loading PDF document from {file_path}...")
+        docs = reader.load_data(file_path)
+        print(type(docs))
+        print(docs[-1])
+        text_splitter = RecursiveCharacterTextSplitter(chunk_size=100, chunk_overlap=20)
+        chunks = text_splitter.split_text(docs[-1].text)
+        print(f"Split PDF into {len(chunks)} chunks")
+        # Convert string chunks to Document objects with metadata
+        doc_chunks = []
+        for chunk_text in chunks:
+            chunk_metadata = metadata.copy() if metadata else {}
+            doc_chunks.append(Document(page_content=chunk_text, metadata=chunk_metadata))
+        return doc_chunks
 
     def setup_vector_store(self, chunks):
         embeddings = OllamaEmbeddings(model='nomic-embed-text', base_url="http://localhost:11434")
@@ -77,12 +101,14 @@ class VRAG():
             for fname in new_files:
                 fpath = os.path.join(folder_path, fname)
                 try:
-                    markdown_content = self.load_and_convert_document(fpath)
-                    chunks = self.get_markdown_splits(markdown_content, metadata={"filename": fname})
+                    #markdown_content = self.load_and_convert_document(fpath)
+                    #chunks = self.get_markdown_splits(markdown_content, metadata={"filename": fname})
+                    chunks = self.get_chunks_from_pdf(fpath, metadata={"filename": fname})
                     new_chunks.extend(chunks)
                     print(f"Processed: {fname} ({len(chunks)} chunks)")
                 except Exception as e:
                     print(f"Failed to process {fpath}: {e}")
+                    print(traceback.format_exc())
             
             if new_chunks:
                 if existing_store:
@@ -195,7 +221,12 @@ def create_rag_chain(retriever):
 
         ### Answer:
     """
-    model = ChatOllama(model="deepseek-r1:1.5b", base_url="http://localhost:11434")
+    #model = ChatOllama(model="deepseek-r1:1.5b", base_url="http://localhost:11434")
+    #model = ChatOllama(model="llama3.1:8b", base_url="http://localhost:11434")
+    
+    
+    model = ChatGoogleGenerativeAI(model="gemini-2.5-flash", temperature=0.7)
+
     prompt_template = ChatPromptTemplate.from_template(prompt)
 
     chain = (
@@ -222,8 +253,8 @@ if __name__ == "__main__":
 
 
     # Setup retriever
-    #retriever = vs.as_retriever(search_type="mmr", search_kwargs={'k': 3})
-    retriever = vs.as_retriever(search_type="similarity", search_kwargs={'k': 10})
+    retriever = vs.as_retriever(search_type="mmr", search_kwargs={'k': 5})
+    # retriever = vs.as_retriever(search_type="similarity", search_kwargs={'k': 10})
 
     # Create RAG chain
 
@@ -244,6 +275,14 @@ if __name__ == "__main__":
         else:
             #print(f"You entered: {question}")
             print(f"Question: {question}")
+
+            context = vs.search(search_type="mmr", search_kwargs={'k': 5}, query=question)
+            print("\nMMR Search Results:")
+            for doc in context:
+                print(f"File: {doc.metadata.get('filename', 'Unknown')}")
+                print(f"Content: {doc.page_content[:100]}...\n")
+
+
             for chunk in rag_chain.stream(question):
                 print(chunk, end="", flush=True)
             print("\n" + "-" * 50 + "\n")
